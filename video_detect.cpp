@@ -3,8 +3,15 @@
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <stdio.h>
+#include <unistd.h>
+#include <pthread.h>
 #include "my_svm.h"
-
+#define dst_HEIGHT 480
+#define dst_WIDTH 640
+#define DEFAULT_DELAY 40
+bool play(false);
+bool play_read(false);
+void * play_video(void * capture); 
 using namespace cv;
 using namespace std;
 
@@ -13,19 +20,24 @@ int main(int argc, char** argv)
   VideoCapture capture;
   if( argc == 1 )
   {
-    capture.open("video.avi");
+  capture.open("video.avi");
     if(!capture.isOpened()){
-      printf("Usage: %s (<image_filename> | <video_filename>)\n",argv[0]);
+      printf("Usage: %s (<image_filename> | <video_filename>)\n%s  number\n",argv[0],argv[0]);
       return 0;
     }
-  } else {
+  } else if( argc == 2) {
     capture.open(argv[1]);
-    if(!capture.isOpened()){
-      printf("Usage: %s <video_filename>\n",argv[0]);
-      return 0;
-    }
-  }
+    if(!capture.isOpened())	capture.open(atoi(argv[1]));
+   	 if(!capture.isOpened()){
+      	printf("Usage: %s (<image_filename> | <video_filename>)\n%s  number\n",argv[0],argv[0]);
+      	return 0;
+    	}
+	}
 
+  //启动播放线程
+
+  pthread_t playid;
+  pthread_create(&playid,NULL,play_video,&capture);
   //检测窗口(64,128),块尺寸(16,16),块步长(8,8),cell尺寸(8,8),直方图bin个数9
   //HOGDescriptor hog(Size(64,128),Size(16,16),Size(8,8),Size(8,8),9);//HOG检测器，用来计算HOG描述子的
   int DescriptorDim;//HOG描述子的维数，由图片大小、检测窗口大小、块大小、细胞单元中直方图bin个数决定
@@ -93,20 +105,30 @@ int main(int argc, char** argv)
   //VideoCapture capture(argv[1]);
   //if(!capture.isOpened())
   //  return 1;
-  double rate=capture.get(CV_CAP_PROP_FPS);
-  bool stop(false);
-  Mat frame;
+//  double rate=capture.get(CV_CAP_PROP_FPS);
+  static bool stop(false);
+  static Mat frame;
 
-  namedWindow("Video");
-  int delay = 1000/rate;
+//  namedWindow("Video");
+// int delay = 1000/rate;
+//创建窗口
+  namedWindow("play");
+  namedWindow("detect");
 
   while(!stop)
   {
+    while(play_read);
+    play=false;
     if(!capture.read(frame))
       break;
-    Mat src=frame;
+    imshow("play",frame);
+    play=true;
 
-    vector<Rect> found, found_filtered;//矩形框数组
+    static  Mat src;
+  if(!frame.empty()) resize(frame,src,Size(dst_WIDTH,dst_HEIGHT));
+	else src=frame;
+
+     vector<Rect> found, found_filtered;//矩形框数组
     myHOG.detectMultiScale(src, found, 0, Size(8,8), Size(32,32), 1.05, 2);//对图片进行多尺度行人检测
 
     //找出所有没有嵌套的矩形框r,并放入found_filtered中,如果有嵌套的话,则取外面最大的那个矩形框放入found_filtered中
@@ -132,10 +154,31 @@ int main(int argc, char** argv)
         rectangle(src, r.tl(), r.br(), Scalar(0,255,0), 3);
     }
 
-    imshow("Video",src);
+    printf("\nnumber of Pedestrian:%d\n",found_filtered.size());
+    imshow("detect",src); 
 
-    if(waitKey(delay)>=0)
+    if(waitKey(20)>=0)
       stop=true;
   }
   capture.release();
+}
+void * play_video(void * capture)
+{
+double  delay=1000/(*(VideoCapture *)capture).get(CV_CAP_PROP_FPS);
+if(delay >300 || delay < 5 ) delay=DEFAULT_DELAY;
+printf("play...delay=%.2f\n",delay);
+while(1)
+{
+while(!play) play_read=false;
+{
+static Mat frame;
+play_read=true;
+if((*(VideoCapture *)capture).read(frame)) {
+play_read=false;
+imshow("play",frame);
+waitKey(delay);
+}
+else exit(0);
+}
+}
 }
