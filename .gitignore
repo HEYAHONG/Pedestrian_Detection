@@ -1,6 +1,6 @@
-CMakeFiles/
+/CMakeFiles/
 dataset
-INRIAPerson/
+/INRIAPerson/
 INRIAPerson*
 pedestrians128x64
 pedestrians128x64.txt
